@@ -481,6 +481,64 @@ function GolfTab({golfSales,showGolfAdd,setShowGolfAdd,golfFecha,setGolfFecha,go
   );
 }
 
+// ─── Delete Txn Button with confirm ──────────────────────────────
+function DeleteTxnBtn({onDelete}){
+  const [confirm, setConfirm] = useState(false);
+  if(confirm) return(
+    <button onClick={()=>{onDelete();setConfirm(false);}} style={{background:"#7f1d1d",border:"none",color:"#fca5a5",borderRadius:7,width:28,height:28,cursor:"pointer",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>¿Sí?</button>
+  );
+  return(
+    <button onClick={()=>setConfirm(true)} style={{background:"#1f2937",border:"none",color:"#6b7280",borderRadius:7,width:28,height:28,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>🗑️</button>
+  );
+}
+
+// ─── Edit Transaction Modal ───────────────────────────────────────
+function EditTxnModal({txn, cats, onSave, onClose}){
+  const [fecha, setFecha]   = useState(txn.fecha);
+  const [catName, setCatName] = useState(txn.cat);
+  const [desc, setDesc]     = useState(txn.desc||"");
+  const [monto, setMonto]   = useState(String(txn.monto));
+  const inp = {background:"#1f2937",border:"1px solid #374151",borderRadius:10,color:"#f9fafb",fontSize:14,padding:"10px 12px",outline:"none",width:"100%",boxSizing:"border-box"};
+  const lbl = {fontSize:11,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"#4b5563",marginBottom:6,display:"block"};
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:"#111827",borderRadius:20,padding:28,width:"100%",maxWidth:420,border:"1px solid #1f2937",boxShadow:"0 24px 64px rgba(0,0,0,0.6)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:22}}>
+          <div style={{fontSize:16,fontWeight:700,color:"#f9fafb"}}>Editar movimiento</div>
+          <button onClick={onClose} style={{background:"transparent",border:"none",color:"#4b5563",fontSize:20,cursor:"pointer"}}>✕</button>
+        </div>
+        <div style={{display:"grid",gap:16}}>
+          <div>
+            <label style={lbl}>Fecha</label>
+            <input type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={inp}/>
+          </div>
+          <div>
+            <label style={lbl}>Categoría</label>
+            <select value={catName} onChange={e=>setCatName(e.target.value)} style={inp}>
+              {cats.filter(c=>c.name!=="Golf Ingreso").map(c=><option key={c.id} value={c.name}>{c.emoji} {c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Descripción</label>
+            <input value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Descripción" style={inp}/>
+          </div>
+          <div>
+            <label style={lbl}>Monto (MXN)</label>
+            <input type="number" value={monto} onChange={e=>setMonto(e.target.value)} placeholder="0" style={{...inp,textAlign:"right"}}/>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:10,marginTop:24}}>
+          <button onClick={onClose} style={{flex:1,background:"transparent",color:"#6b7280",border:"1px solid #374151",borderRadius:10,padding:"10px 0",fontSize:14,fontWeight:600,cursor:"pointer"}}>Cancelar</button>
+          <button onClick={()=>{
+            if(!fecha||!catName||!monto||parseFloat(monto)<=0) return;
+            onSave({...txn, fecha, cat:catName, desc, monto:parseFloat(monto), mes:getMesFromFecha(fecha), ano:getAnoFromFecha(fecha)});
+          }} style={{flex:2,background:"linear-gradient(135deg,#34d399,#22c55e)",color:"#022c22",border:"none",borderRadius:10,padding:"10px 0",fontSize:14,fontWeight:700,cursor:"pointer"}}>Guardar cambios</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main App ─────────────────────────────────────────────────────
 export default function GastosTracker(){
   const [dbReady, setDbReady]   = useState(false);
@@ -516,6 +574,7 @@ export default function GastosTracker(){
   const [golfMesFilt,setGolfMesFilt] = useState("todos");
   const [golfEditId,setGolfEditId]   = useState(null);
   const [golfSales, setGolfSales]    = useState([]);
+  const [editTxn, setEditTxn]        = useState(null);
 
   // ── Supabase: seed + load ─────────────────────────────────────
   useEffect(()=>{
@@ -610,6 +669,20 @@ export default function GastosTracker(){
     if(!error) setTxns(p=>[...p,{...row,desc}]);
     setShowAdd(false);
     showToast(`${isIngreso(cat)?"📈":isInversion(cat)?"💰":"💸"} ${fmt(monto)} agregado`);
+  };
+
+  const handleUpdateTxn=async(txn)=>{
+    const row={cat:txn.cat,monto:txn.monto,descripcion:txn.desc,fecha:txn.fecha,mes:txn.mes,ano:txn.ano};
+    await supabase.from("transactions").update(row).eq("id",txn.id);
+    setTxns(p=>p.map(t=>t.id===txn.id?{...txn}:t));
+    setEditTxn(null);
+    showToast("✓ Movimiento actualizado");
+  };
+
+  const handleDeleteTxn=async(id)=>{
+    await supabase.from("transactions").delete().eq("id",id);
+    setTxns(p=>p.filter(t=>t.id!==id));
+    showToast("🗑️ Movimiento eliminado");
   };
 
   const handleSaveCat=async(cat)=>{
@@ -782,10 +855,10 @@ export default function GastosTracker(){
           </div>
           <div style={{background:"#111827",borderRadius:18,overflow:"hidden",border:"1px solid #1f2937"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-              <thead><tr style={{background:"#0d1117"}}>{["#","Fecha","Categoría","Descripción","Monto",""].map((h,i)=>(<th key={i} style={{...thS,textAlign:i===4?"right":"left"}}>{h}</th>))}</tr></thead>
+              <thead><tr style={{background:"#0d1117"}}>{["#","Fecha","Categoría","Descripción","Monto","Tipo",""].map((h,i)=>(<th key={i} style={{...thS,textAlign:i===4?"right":"left"}}>{h}</th>))}</tr></thead>
               <tbody>
                 {showAdd&&<AddRow cats={cats.filter(c=>c.name!=="Golf Ingreso")} onSave={handleSaveTxn} onCancel={()=>setShowAdd(false)}/>}
-                {filtered.map((r,i)=>{const ing=isIngreso(r.cat);const inv=isInversion(r.cat);const color=ing?"#34d399":inv?"#4ade80":"#f9fafb";return(<tr key={r.id} style={{background:i%2===0?"transparent":"rgba(255,255,255,0.015)"}}><td style={{...tdS,color:"#374151",fontSize:11,fontWeight:600,minWidth:36}}>{txnIndexMap[r.id]||"—"}</td><td style={{...tdS,color:"#4b5563",fontSize:12,whiteSpace:"nowrap"}}>{r.fecha}</td><td style={tdS}><div style={{display:"flex",alignItems:"center",gap:9}}><div style={{width:32,height:32,borderRadius:9,background:`${getCatColor(r.cat)}18`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{getCatEmoji(r.cat)}</div><span style={{fontSize:13,color:"#e5e7eb"}}>{r.cat}</span></div></td><td style={{...tdS,color:"#6b7280",fontSize:12}}>{r.desc}</td><td style={{...tdS,textAlign:"right",fontWeight:700,fontSize:14,color}}>{ing?"+":""}{fmt(r.monto)}</td><td style={tdS}><span style={{display:"inline-block",fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20,letterSpacing:"0.06em",textTransform:"uppercase",background:ing?"rgba(52,211,153,0.1)":inv?"rgba(74,222,128,0.1)":"rgba(251,146,60,0.1)",color:ing?"#34d399":inv?"#4ade80":"#fb923c"}}>{ing?"ingreso":inv?"inversión":"gasto"}</span></td></tr>);})}
+                {filtered.map((r,i)=>{const ing=isIngreso(r.cat);const inv=isInversion(r.cat);const color=ing?"#34d399":inv?"#4ade80":"#f9fafb";return(<tr key={r.id} style={{background:i%2===0?"transparent":"rgba(255,255,255,0.015)"}}><td style={{...tdS,color:"#374151",fontSize:11,fontWeight:600,minWidth:36}}>{txnIndexMap[r.id]||"—"}</td><td style={{...tdS,color:"#4b5563",fontSize:12,whiteSpace:"nowrap"}}>{r.fecha}</td><td style={tdS}><div style={{display:"flex",alignItems:"center",gap:9}}><div style={{width:32,height:32,borderRadius:9,background:`${getCatColor(r.cat)}18`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{getCatEmoji(r.cat)}</div><span style={{fontSize:13,color:"#e5e7eb"}}>{r.cat}</span></div></td><td style={{...tdS,color:"#6b7280",fontSize:12}}>{r.desc}</td><td style={{...tdS,textAlign:"right",fontWeight:700,fontSize:14,color}}>{ing?"+":""}{fmt(r.monto)}</td><td style={tdS}><span style={{display:"inline-block",fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20,letterSpacing:"0.06em",textTransform:"uppercase",background:ing?"rgba(52,211,153,0.1)":inv?"rgba(74,222,128,0.1)":"rgba(251,146,60,0.1)",color:ing?"#34d399":inv?"#4ade80":"#fb923c"}}>{ing?"ingreso":inv?"inversión":"gasto"}</span></td><td style={tdS}><div style={{display:"flex",gap:5,justifyContent:"flex-end"}}><button onClick={()=>setEditTxn(r)} style={{background:"#1f2937",border:"none",color:"#9ca3af",borderRadius:7,width:28,height:28,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>✏️</button><DeleteTxnBtn onDelete={()=>handleDeleteTxn(r.id)}/></div></td></tr>);})}
                 {filtered.length===0&&!showAdd&&(<tr><td colSpan={6} style={{...tdS,textAlign:"center",color:"#374151",padding:48}}>Sin movimientos</td></tr>)}
               </tbody>
             </table>
@@ -830,6 +903,7 @@ export default function GastosTracker(){
       </div>
 
       {modalCat!==null&&(<CatModal cat={modalCat.id?modalCat:null} usedColors={usedColors} usedEmojis={usedEmojis} onSave={handleSaveCat} onClose={()=>setModalCat(null)}/>)}
+      {editTxn&&(<EditTxnModal txn={editTxn} cats={cats} onSave={handleUpdateTxn} onClose={()=>setEditTxn(null)}/>)}
       {toast&&(<div style={{position:"fixed",bottom:24,right:24,background:"#111827",border:"1px solid #34d399",color:"#34d399",padding:"12px 20px",borderRadius:12,fontSize:13,fontWeight:600,boxShadow:"0 8px 32px rgba(0,0,0,0.5)",zIndex:998}}>{toast}</div>)}
     </div>
   );
